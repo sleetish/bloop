@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blueprint Drawer Interactive</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .tool-button.active { background-color: #60a5fa; color: white; }
+        #blueprintCanvas { cursor: crosshair; touch-action: none; background-color: #fff; display: block; }
+        .measurement-text { font-size: 10px; fill: #333; }
+        #canvasContainer {
+            width: 100%; 
+            overflow: auto; 
+            border: 1px solid #ccc;
+            margin-bottom: 1rem;
+        }
+        .selected-object-properties { border: 1px solid #ddd; padding: 10px; margin-top: 10px; background-color: #f9f9f9; }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center min-h-screen p-4">
+
+    <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-7xl">
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl font-bold text-blue-600">Blueprint Drawer Interactive</h1>
+            <p class="text-sm text-gray-500">Undo, configurable canvas, dynamic measurements, select & scale lines.</p>
+        </header>
+
+        <div class="mb-4 text-sm text-gray-700">
+            <p>User ID: <span id="userIdDisplay" class="font-mono text-blue-500">Initializing...</span></p>
+            <p>Current Blueprint: <span id="currentBlueprintNameDisplay" class="font-semibold text-green-600">New Blueprint</span></p>
+            <div id="messageArea" class="mt-2 p-3 text-sm rounded-md min-h-[40px]"></div>
+        </div>
+
+        <div class="mb-6 p-4 bg-gray-50 rounded-lg shadow-sm flex flex-col gap-4">
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-gray-700">Tool:</span>
+                    <button id="selectTool" class="tool-button px-3 py-2 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">Select</button>
+                    <button id="lineTool" class="tool-button px-3 py-2 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors active">Line</button>
+                    <button id="rectTool" class="tool-button px-3 py-2 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">Rectangle</button>
+                    <button id="doorTool" class="tool-button px-3 py-2 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">Door</button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="strokeColor" class="text-sm font-medium text-gray-700">Color:</label>
+                    <input type="color" id="strokeColor" value="#000000" class="w-10 h-10 rounded-md border border-gray-300 cursor-pointer">
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="lineWidth" class="text-sm font-medium text-gray-700">Width:</label>
+                    <input type="number" id="lineWidth" value="2" min="1" max="50" class="w-16 p-2 border border-gray-300 rounded-md text-sm">
+                </div>
+                 <button id="undoButton" class="px-3 py-2 text-sm bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition-colors">Undo</button>
+            </div>
+            <div class="border-t border-gray-200 pt-4 mt-2 flex flex-wrap items-center gap-x-6 gap-y-4">
+                 <div class="flex items-center gap-2">
+                    <label class="text-sm font-medium text-gray-700">Grid Scale: 1 Block =</label>
+                    <input type="number" id="gridScaleValue" value="1" min="0.01" step="0.1" class="w-20 p-2 border border-gray-300 rounded-md text-sm">
+                    <select id="gridScaleUnit" class="p-2 border border-gray-300 rounded-md text-sm">
+                        <option value="ft">ft</option><option value="m">m</option><option value="in">in</option><option value="cm">cm</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="showMeasurementsToggle" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer">
+                    <label for="showMeasurementsToggle" class="text-sm font-medium text-gray-700 cursor-pointer">Show Measurements</label>
+                </div>
+            </div>
+            <div class="border-t border-gray-200 pt-4 mt-2 flex flex-wrap items-center gap-x-6 gap-y-4">
+                <label class="text-sm font-medium text-gray-700">Canvas Size (px):</label>
+                <input type="number" id="canvasWidthInput" value="800" min="100" class="w-24 p-2 border border-gray-300 rounded-md text-sm" placeholder="Width">
+                <input type="number" id="canvasHeightInput" value="450" min="100" class="w-24 p-2 border border-gray-300 rounded-md text-sm" placeholder="Height">
+                <button id="resizeCanvasButton" class="px-3 py-2 text-sm bg-indigo-500 text-white rounded-md hover:bg-indigo-600 transition-colors">Apply Size</button>
+            </div>
+        </div>
+
+        <div id="canvasContainer">
+            <canvas id="blueprintCanvas"></canvas>
+        </div>
+        
+        <div id="selectedObjectPanel" class="selected-object-properties hidden mt-4 p-4 bg-gray-50 rounded-lg shadow-sm">
+            <h4 class="text-md font-semibold mb-2 text-gray-700">Selected Object Properties</h4>
+            <div id="lineProps" class="hidden">
+                <label for="selectedLineLengthInput" class="text-sm font-medium text-gray-700">New Length (<span id="selectedLineUnit"></span>):</label>
+                <input type="number" id="selectedLineLengthInput" step="0.01" class="w-24 p-2 border border-gray-300 rounded-md text-sm">
+                <button id="applyLineLengthButton" class="ml-2 px-3 py-2 text-sm bg-green-500 text-white rounded-md hover:bg-green-600">Apply Length</button>
+            </div>
+            <p id="noObjectSelectedMsg" class="text-sm text-gray-500">Click on an object with the 'Select' tool to edit its properties.</p>
+        </div>
+
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 my-6">
+            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                <h3 class="text-lg font-semibold mb-2 text-gray-800">Save Blueprint</h3>
+                <input type="text" id="blueprintNameInput" placeholder="Enter Blueprint Name" class="p-2 border border-gray-300 rounded-md w-full text-sm mb-2">
+                <button id="saveBlueprintButton" class="w-full bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md text-sm transition-colors">Save as New Public Blueprint</button>
+            </div>
+            <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                <h3 class="text-lg font-semibold mb-2 text-gray-800">Load Public Blueprint</h3>
+                <div class="flex gap-2 items-center mb-2">
+                    <select id="publicBlueprintsSelect" class="p-2 border border-gray-300 rounded-md w-full text-sm flex-grow">
+                        <option value="">Loading blueprints...</option>
+                    </select>
+                    <button id="refreshBlueprintsButton" class="p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-sm" title="Refresh List">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                    </button>
+                </div>
+                <button id="loadBlueprintButton" class="w-full bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-md text-sm transition-colors">Load Selected Blueprint</button>
+            </div>
+        </div>
+        <div class="text-center">
+             <button id="newBlueprintButton" class="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-md font-semibold transition-colors">New/Clear Blueprint</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, getDoc, collection, getDocs, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-blueprint-interactive-app';
+
+        let app, auth, db, userId = null, isAuthReady = false;
+
+        const canvas = document.getElementById('blueprintCanvas');
+        const ctx = canvas.getContext('2d');
+        const canvasContainer = document.getElementById('canvasContainer');
+        const canvasWidthInput = document.getElementById('canvasWidthInput');
+        const canvasHeightInput = document.getElementById('canvasHeightInput');
+        const resizeCanvasButton = document.getElementById('resizeCanvasButton');
+
+        const selectToolBtn = document.getElementById('selectTool');
+        const lineToolBtn = document.getElementById('lineTool');
+        const rectToolBtn = document.getElementById('rectTool');
+        const doorToolBtn = document.getElementById('doorTool');
+        const strokeColorInput = document.getElementById('strokeColor');
+        const lineWidthInput = document.getElementById('lineWidth');
+        const undoButton = document.getElementById('undoButton');
+
+        const gridScaleValueInput = document.getElementById('gridScaleValue');
+        const gridScaleUnitSelect = document.getElementById('gridScaleUnit');
+        const showMeasurementsToggle = document.getElementById('showMeasurementsToggle');
+
+        const blueprintNameInput = document.getElementById('blueprintNameInput');
+        const saveBlueprintButton = document.getElementById('saveBlueprintButton');
+        const publicBlueprintsSelect = document.getElementById('publicBlueprintsSelect');
+        const refreshBlueprintsButton = document.getElementById('refreshBlueprintsButton');
+        const loadBlueprintButton = document.getElementById('loadBlueprintButton');
+        const newBlueprintButton = document.getElementById('newBlueprintButton');
+        
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        const currentBlueprintNameDisplay = document.getElementById('currentBlueprintNameDisplay');
+        const messageArea = document.getElementById('messageArea');
+
+        const selectedObjectPanel = document.getElementById('selectedObjectPanel');
+        const linePropsDiv = document.getElementById('lineProps');
+        const selectedLineLengthInput = document.getElementById('selectedLineLengthInput');
+        const selectedLineUnitSpan = document.getElementById('selectedLineUnit');
+        const applyLineLengthButton = document.getElementById('applyLineLengthButton');
+        const noObjectSelectedMsg = document.getElementById('noObjectSelectedMsg');
+
+        let currentTool = 'line'; 
+        let isDrawing = false, isResizing = false; 
+        let startX, startY;
+        let drawingObjects = []; 
+        let tempShape = null; 
+        let selectedObject = null;
+        let undoStack = [];
+        const MAX_UNDO_STACK = 20;
+        
+        let currentBlueprintId = null, currentBlueprintName = "New Blueprint";
+
+        const GRID_SIZE = 20; 
+        let gridScaleValue = 1, gridScaleUnit = 'ft', showMeasurements = false;
+        const SELECTION_TOLERANCE = 5; 
+        const SELECTION_COLOR = 'rgba(0, 123, 255, 0.7)'; 
+
+        async function initializeFirebase() { 
+            if (!firebaseConfig) {
+                console.error("Firebase config is not available.");
+                showMessage("Error: Firebase configuration missing. App cannot connect to database.", "error");
+                return;
+            }
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                setLogLevel('debug'); 
+
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userIdDisplay.textContent = userId;
+                        isAuthReady = true;
+                        await loadPublicBlueprints(); 
+                    } else {
+                        userId = null;
+                        userIdDisplay.textContent = "Not signed in";
+                        isAuthReady = false;
+                    }
+                    saveBlueprintButton.disabled = !isAuthReady;
+                    loadBlueprintButton.disabled = !isAuthReady;
+                    refreshBlueprintsButton.disabled = !isAuthReady;
+                    undoButton.disabled = !isAuthReady; 
+                });
+                
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Firebase initialization error:", error);
+                showMessage(`Firebase init error: ${error.message}`, "error");
+            }
+        }
+        const dpr = window.devicePixelRatio || 1;
+
+        function setCanvasDimensions() {
+            const newWidth = parseInt(canvasWidthInput.value) || 800; // Target CSS width
+            const newHeight = parseInt(canvasHeightInput.value) || 450; // Target CSS height
+            
+            canvas.style.width = `${newWidth}px`;
+            canvas.style.height = `${newHeight}px`;
+            canvasContainer.style.height = `${newHeight}px`; 
+
+            canvas.width = newWidth * dpr;
+            canvas.height = newHeight * dpr;
+            
+            ctx.scale(dpr, dpr); 
+
+            redrawCanvas(newWidth, newHeight); // Pass target CSS dimensions for this redraw
+        }
+        resizeCanvasButton.addEventListener('click', setCanvasDimensions);
+
+        function drawGrid(renderWidth, renderHeight) { // Accepts CSS pixel dimensions
+            ctx.strokeStyle = '#e0e0e0'; 
+            ctx.lineWidth = 0.5;
+            for (let x = 0; x < renderWidth; x += GRID_SIZE) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, renderHeight); ctx.stroke();
+            }
+            for (let y = 0; y < renderHeight; y += GRID_SIZE) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(renderWidth, y); ctx.stroke();
+            }
+        }
+
+        function calculateMeasurement(startX, startY, endX, endY) {
+            const pixelLength = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+            const realLength = (pixelLength / GRID_SIZE) * gridScaleValue;
+            return `${realLength.toFixed(2)} ${gridScaleUnit}`;
+        }
+        
+        function updateAllMeasurements() {
+            drawingObjects.forEach(obj => {
+                if ((obj.type === 'line' || obj.type === 'door') && (obj.startX !== undefined || obj.hingeX !== undefined)) {
+                    const p1x = obj.startX !== undefined ? obj.startX : obj.hingeX;
+                    const p1y = obj.startY !== undefined ? obj.startY : obj.hingeY;
+                    const p2x = obj.endX !== undefined ? obj.endX : obj.knobX;
+                    const p2y = obj.endY !== undefined ? obj.endY : obj.knobY;
+                    obj.measurement = calculateMeasurement(p1x, p1y, p2x, p2y);
+                }
+            });
+            redrawCanvas(); // Will use canvas.clientWidth/Height, which should be stable
+        }
+
+        function drawShape(shape) {
+            const isSelected = shape === selectedObject;
+            ctx.strokeStyle = isSelected ? SELECTION_COLOR : shape.color;
+            ctx.lineWidth = isSelected ? shape.lineWidth + 2 : shape.lineWidth; 
+            ctx.lineCap = "round";
+            let angle = 0; 
+
+            if (shape.type === 'line') {
+                ctx.beginPath(); ctx.moveTo(shape.startX, shape.startY); ctx.lineTo(shape.endX, shape.endY); ctx.stroke();
+                angle = Math.atan2(shape.endY - shape.startY, shape.endX - shape.startX);
+                if (showMeasurements && shape.measurement) {
+                    drawMeasurementText(shape.measurement, (shape.startX + shape.endX) / 2, (shape.startY + shape.endY) / 2, isSelected ? SELECTION_COLOR : shape.color, angle);
+                }
+            } else if (shape.type === 'rect') {
+                ctx.beginPath(); ctx.rect(shape.x, shape.y, shape.width, shape.height); ctx.stroke();
+            } else if (shape.type === 'door') {
+                ctx.beginPath(); ctx.moveTo(shape.hingeX, shape.hingeY); ctx.lineTo(shape.knobX, shape.knobY); ctx.stroke(); 
+                const doorLength = Math.sqrt(Math.pow(shape.knobX - shape.hingeX, 2) + Math.pow(shape.knobY - shape.hingeY, 2));
+                const startAngle = Math.atan2(shape.knobY - shape.hingeY, shape.knobX - shape.hingeX);
+                const endAngle = startAngle + Math.PI / 2; 
+                ctx.beginPath(); ctx.arc(shape.hingeX, shape.hingeY, doorLength, startAngle, endAngle, false); ctx.stroke(); 
+                angle = startAngle; 
+                 if (showMeasurements && shape.measurement) {
+                    drawMeasurementText(shape.measurement, (shape.hingeX + shape.knobX) / 2, (shape.hingeY + shape.knobY) / 2, isSelected ? SELECTION_COLOR : shape.color, angle);
+                }
+            }
+        }
+        
+        function drawMeasurementText(text, x, y, color, angle = 0) {
+            ctx.fillStyle = color; 
+            ctx.font = '10px Inter, sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+            const offsetX = Math.sin(angle) * 10; 
+            const offsetY = -Math.cos(angle) * 10;
+            ctx.fillText(text, x + offsetX, y + offsetY - 5);
+        }
+
+        function redrawCanvas(cssWidthToUse, cssHeightToUse) {
+            // Use provided CSS dimensions if available (e.g., right after resize), otherwise use current client dimensions
+            const W = cssWidthToUse !== undefined ? cssWidthToUse : canvas.clientWidth;
+            const H = cssHeightToUse !== undefined ? cssHeightToUse : canvas.clientHeight;
+
+            ctx.clearRect(0, 0, W, H); 
+            drawGrid(W, H); // Pass the dimensions to drawGrid
+            drawingObjects.forEach(drawShape);
+            if (isDrawing && tempShape) {
+                drawShape(tempShape); 
+                if (showMeasurements && (tempShape.type === 'line' || tempShape.type === 'door') && (tempShape.startX !== undefined || tempShape.hingeX !== undefined)) {
+                    const p1x = tempShape.startX !== undefined ? tempShape.startX : tempShape.hingeX;
+                    const p1y = tempShape.startY !== undefined ? tempShape.startY : tempShape.hingeY;
+                    const p2x = tempShape.endX !== undefined ? tempShape.endX : tempShape.knobX;
+                    const p2y = tempShape.endY !== undefined ? tempShape.endY : tempShape.knobY;
+                    if (p1x !== p2x || p1y !== p2y) { 
+                        const measurement = calculateMeasurement(p1x, p1y, p2x, p2y);
+                        const angle = Math.atan2(p2y - p1y, p2x - p1x);
+                        drawMeasurementText(measurement, (p1x + p2x) / 2, (p1y + p2y) / 2, tempShape.color, angle);
+                    }
+                }
+            }
+        }
+        
+        function getMousePos(event) { 
+            const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
+            if (event.touches && event.touches.length > 0) {
+                clientX = event.touches[0].clientX; clientY = event.touches[0].clientY;
+            } else {
+                clientX = event.clientX; clientY = event.clientY;
+            }
+            return { x: (clientX - rect.left), y: (clientY - rect.top) };
+        }
+
+        function saveToUndoStack() {
+            if (undoStack.length >= MAX_UNDO_STACK) { undoStack.shift(); }
+            undoStack.push(JSON.parse(JSON.stringify(drawingObjects))); 
+            undoButton.disabled = false;
+        }
+
+        function handleUndo() {
+            if (undoStack.length > 0) {
+                drawingObjects = undoStack.pop();
+                if (undoStack.length === 0) { undoButton.disabled = true; }
+                selectedObject = null; 
+                updateSelectedObjectPanel();
+                redrawCanvas();
+                showMessage("Last action undone.", "info");
+            } else {
+                showMessage("Nothing to undo.", "warning");
+            }
+        }
+        undoButton.addEventListener('click', handleUndo);
+
+        function pointLineSegmentDistance(p, a, b) {
+            const l2 = Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2);
+            if (l2 === 0) return Math.sqrt(Math.pow(p.x - a.x, 2) + Math.pow(p.y - a.y, 2)); 
+            let t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / l2;
+            t = Math.max(0, Math.min(1, t));
+            const closestPoint = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+            return Math.sqrt(Math.pow(p.x - closestPoint.x, 2) + Math.pow(p.y - closestPoint.y, 2));
+        }
+
+        function updateSelectedObjectPanel() {
+            if (selectedObject && selectedObject.type === 'line') {
+                selectedObjectPanel.classList.remove('hidden');
+                linePropsDiv.classList.remove('hidden');
+                noObjectSelectedMsg.classList.add('hidden');
+                selectedLineUnitSpan.textContent = gridScaleUnit;
+                const currentPixelLength = Math.sqrt(Math.pow(selectedObject.endX - selectedObject.startX, 2) + Math.pow(selectedObject.endY - selectedObject.startY, 2));
+                const currentRealLength = (currentPixelLength / GRID_SIZE) * gridScaleValue;
+                selectedLineLengthInput.value = currentRealLength.toFixed(2);
+            } else {
+                selectedObjectPanel.classList.add('hidden');
+                linePropsDiv.classList.add('hidden');
+                noObjectSelectedMsg.classList.remove('hidden');
+                selectedObject = null; 
+            }
+            redrawCanvas(); 
+        }
+        
+        applyLineLengthButton.addEventListener('click', () => {
+            if (!selectedObject || selectedObject.type !== 'line') return;
+            saveToUndoStack(); 
+            const newRealLength = parseFloat(selectedLineLengthInput.value);
+            if (isNaN(newRealLength) || newRealLength <= 0) {
+                showMessage("Please enter a valid positive length.", "warning"); return;
+            }
+            const newPixelLength = (newRealLength / gridScaleValue) * GRID_SIZE;
+            const line = selectedObject;
+            const dx = line.endX - line.startX;
+            const dy = line.endY - line.startY;
+            const currentPixelLength = Math.sqrt(dx*dx + dy*dy);
+            if (currentPixelLength < 0.001) { 
+                line.endX = line.startX + newPixelLength; line.endY = line.startY;
+            } else {
+                const ratio = newPixelLength / currentPixelLength;
+                line.endX = line.startX + dx * ratio; line.endY = line.startY + dy * ratio;
+            }
+            line.measurement = calculateMeasurement(line.startX, line.startY, line.endX, line.endY);
+            showMessage(`Line length updated to ${line.measurement}.`, "success");
+            updateSelectedObjectPanel(); 
+        });
+
+        function handleStart(event) {
+            if (event.target !== canvas) return;
+            event.preventDefault();
+            const pos = getMousePos(event);
+            startX = pos.x; startY = pos.y;
+            if (currentTool === 'select') {
+                selectedObject = null; 
+                let minDist = Infinity, closestObj = null;
+                drawingObjects.forEach(obj => {
+                    if (obj.type === 'line') {
+                        const dist = pointLineSegmentDistance(pos, {x: obj.startX, y: obj.startY}, {x: obj.endX, y: obj.endY});
+                        if (dist < SELECTION_TOLERANCE && dist < minDist) { minDist = dist; closestObj = obj; }
+                    }
+                });
+                if (closestObj) { selectedObject = closestObj; }
+                updateSelectedObjectPanel();
+                isDrawing = false; return;
+            }
+            isDrawing = true; selectedObject = null; 
+            updateSelectedObjectPanel();
+            if (currentTool === 'door') { 
+                tempShape = { type: 'door', hingeX: startX, hingeY: startY, knobX: startX, knobY: startY, color: strokeColorInput.value, lineWidth: parseInt(lineWidthInput.value) || 1 };
+            } else { tempShape = null; }
+        }
+
+        function handleMove(event) {
+            if (event.target !== canvas || !isDrawing || currentTool === 'select') return;
+            event.preventDefault();
+            const pos = getMousePos(event);
+            const commonProps = { color: strokeColorInput.value, lineWidth: parseInt(lineWidthInput.value) || 1 };
+            let measurement = null;
+            if (showMeasurements && (currentTool === 'line' || currentTool === 'door')) {
+                 measurement = calculateMeasurement(startX, startY, pos.x, pos.y);
+            }
+            if (currentTool === 'line') {
+                tempShape = { type: 'line', startX, startY, endX: pos.x, endY: pos.y, ...commonProps, measurement };
+            } else if (currentTool === 'rect') {
+                tempShape = { type: 'rect', x: Math.min(startX, pos.x), y: Math.min(startY, pos.y), width: Math.abs(pos.x - startX), height: Math.abs(pos.y - startY), ...commonProps };
+            } else if (currentTool === 'door') {
+                tempShape = { type: 'door', hingeX: startX, hingeY: startY, knobX: pos.x, knobY: pos.y, ...commonProps, measurement };
+            }
+            redrawCanvas();
+        }
+
+        function handleEnd(event) {
+            if (currentTool === 'select' || !isDrawing) { isDrawing = false; return; }
+            if (event.target !== canvas && event.type !== 'touchend' && event.type !== 'touchcancel') { isDrawing = false; return; }
+            isDrawing = false;
+            if (tempShape) {
+                saveToUndoStack(); 
+                if (showMeasurements && (tempShape.type === 'line' || tempShape.type === 'door')) {
+                    if (!tempShape.measurement) { 
+                        const p1x = tempShape.startX !== undefined ? tempShape.startX : tempShape.hingeX;
+                        const p1y = tempShape.startY !== undefined ? tempShape.startY : tempShape.hingeY;
+                        const p2x = tempShape.endX !== undefined ? tempShape.endX : tempShape.knobX;
+                        const p2y = tempShape.endY !== undefined ? tempShape.endY : tempShape.knobY;
+                        if (p1x !== p2x || p1y !== p2y) {
+                           tempShape.measurement = calculateMeasurement(p1x, p1y, p2x, p2y);
+                        } else { tempShape.measurement = `0.00 ${gridScaleUnit}`; }
+                    }
+                }
+                drawingObjects.push({...tempShape});
+                tempShape = null;
+            }
+            redrawCanvas();
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('mouseout', (e) => { if(isDrawing) handleEnd(e);}); 
+        canvas.addEventListener('touchstart', handleStart, { passive: false });
+        canvas.addEventListener('touchmove', handleMove, { passive: false });
+        canvas.addEventListener('touchend', handleEnd);
+        canvas.addEventListener('touchcancel', handleEnd);
+
+        function setActiveTool(toolName) {
+            currentTool = toolName;
+            [selectToolBtn, lineToolBtn, rectToolBtn, doorToolBtn].forEach(btn => {
+                btn.classList.remove('active', 'bg-blue-500', 'text-white');
+                btn.classList.add('bg-gray-200', 'text-gray-700');
+            });
+            const activeBtn = document.getElementById(`${toolName}Tool`);
+            if (activeBtn) {
+                activeBtn.classList.add('active', 'bg-blue-500', 'text-white');
+                activeBtn.classList.remove('bg-gray-200', 'text-gray-700');
+            }
+            if (toolName !== 'select') { selectedObject = null; updateSelectedObjectPanel(); }
+            canvas.style.cursor = toolName === 'select' ? 'default' : 'crosshair';
+        }
+        selectToolBtn.addEventListener('click', () => setActiveTool('select'));
+        lineToolBtn.addEventListener('click', () => setActiveTool('line'));
+        rectToolBtn.addEventListener('click', () => setActiveTool('rect'));
+        doorToolBtn.addEventListener('click', () => setActiveTool('door'));
+
+        showMeasurementsToggle.addEventListener('change', (e) => { showMeasurements = e.target.checked; updateAllMeasurements(); });
+        gridScaleValueInput.addEventListener('change', (e) => { gridScaleValue = parseFloat(e.target.value) || 1; updateAllMeasurements(); if (selectedObject) updateSelectedObjectPanel(); });
+        gridScaleUnitSelect.addEventListener('change', (e) => { gridScaleUnit = e.target.value; updateAllMeasurements(); if (selectedObject) updateSelectedObjectPanel(); });
+
+        function clearBlueprint() {
+            saveToUndoStack(); 
+            drawingObjects = [];
+            currentBlueprintId = null; currentBlueprintName = "New Blueprint";
+            blueprintNameInput.value = ""; currentBlueprintNameDisplay.textContent = currentBlueprintName;
+            gridScaleValueInput.value = "1"; gridScaleUnitSelect.value = "ft";
+            gridScaleValue = 1; gridScaleUnit = 'ft';
+            showMeasurementsToggle.checked = false; showMeasurements = false;
+            selectedObject = null; updateSelectedObjectPanel();
+            redrawCanvas(parseInt(canvasWidthInput.value) || 800, parseInt(canvasHeightInput.value) || 450); // Use current input values for canvas size
+            showMessage("Canvas cleared. Ready for a new blueprint.", "info");
+        }
+        newBlueprintButton.addEventListener('click', clearBlueprint);
+
+        saveBlueprintButton.addEventListener('click', async () => { 
+            if (!isAuthReady || !userId) { showMessage("You must be signed in to save blueprints.", "error"); return; }
+            const name = blueprintNameInput.value.trim();
+            if (!name) { showMessage("Please enter a name for your blueprint.", "warning"); return; }
+            if (drawingObjects.length === 0) { showMessage("Canvas is empty. Draw something to save.", "warning"); return; }
+            saveBlueprintButton.disabled = true; saveBlueprintButton.textContent = "Saving...";
+            showMessage("Saving blueprint...", "info");
+            try {
+                const blueprintsColRef = collection(db, `/artifacts/${appId}/public/data/blueprints`);
+                const blueprintToSave = {
+                    name: name, ownerUserId: userId,
+                    drawingData: JSON.stringify(drawingObjects),
+                    gridSettings: { scaleValue: gridScaleValue, scaleUnit: gridScaleUnit, showMeasurements: showMeasurements },
+                    canvasSettings: { width: parseInt(canvasWidthInput.value), height: parseInt(canvasHeightInput.value) }, 
+                    createdAt: serverTimestamp(), isPublic: true 
+                };
+                const newBlueprintDoc = await addDoc(blueprintsColRef, blueprintToSave);
+                currentBlueprintId = newBlueprintDoc.id; currentBlueprintName = name;
+                currentBlueprintNameDisplay.textContent = `${name} (ID: ${currentBlueprintId.substring(0,6)}...)`;
+                showMessage(`Blueprint "${name}" saved successfully!`, "success");
+                await loadPublicBlueprints();
+            } catch (error) { console.error("Error saving blueprint:", error); showMessage(`Error saving blueprint: ${error.message}`, "error");
+            } finally { saveBlueprintButton.disabled = false; saveBlueprintButton.textContent = "Save as New Public Blueprint"; }
+        });
+
+        async function loadPublicBlueprints() { 
+            if (!isAuthReady) { publicBlueprintsSelect.innerHTML = '<option value="">Sign in to load blueprints</option>'; return; }
+            publicBlueprintsSelect.innerHTML = '<option value="">Loading blueprints...</option>';
+            publicBlueprintsSelect.disabled = true; refreshBlueprintsButton.disabled = true;
+            try {
+                const blueprintsColRef = collection(db, `/artifacts/${appId}/public/data/blueprints`);
+                const querySnapshot = await getDocs(blueprintsColRef);
+                publicBlueprintsSelect.innerHTML = ''; 
+                if (querySnapshot.empty) { publicBlueprintsSelect.innerHTML = '<option value="">No public blueprints found</option>'; }
+                else { querySnapshot.forEach((docSnap) => { const blueprint = docSnap.data(); const option = document.createElement('option'); option.value = docSnap.id; option.textContent = `${blueprint.name} (by ${blueprint.ownerUserId.substring(0,6)}...)`; publicBlueprintsSelect.appendChild(option); }); }
+            } catch (error) { console.error("Error loading public blueprints:", error); publicBlueprintsSelect.innerHTML = '<option value="">Error loading blueprints</option>'; showMessage(`Error loading blueprints: ${error.message}`, "error");
+            } finally { publicBlueprintsSelect.disabled = false; refreshBlueprintsButton.disabled = false; }
+        }
+        refreshBlueprintsButton.addEventListener('click', loadPublicBlueprints);
+
+        loadBlueprintButton.addEventListener('click', async () => { 
+            if (!isAuthReady) { showMessage("You must be signed in to load blueprints.", "error"); return; }
+            const selectedId = publicBlueprintsSelect.value;
+            if (!selectedId) { showMessage("Please select a blueprint to load.", "warning"); return; }
+            loadBlueprintButton.disabled = true; loadBlueprintButton.textContent = "Loading...";
+            showMessage("Loading blueprint...", "info");
+            saveToUndoStack(); 
+            try {
+                const docRef = doc(db, `/artifacts/${appId}/public/data/blueprints`, selectedId);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    drawingObjects = JSON.parse(data.drawingData || "[]");
+                    currentBlueprintId = docSnap.id; currentBlueprintName = data.name;
+                    if (data.gridSettings) {
+                        gridScaleValue = parseFloat(data.gridSettings.scaleValue) || 1;
+                        gridScaleUnit = data.gridSettings.scaleUnit || 'ft';
+                        showMeasurements = data.gridSettings.showMeasurements === true;
+                        gridScaleValueInput.value = gridScaleValue; gridScaleUnitSelect.value = gridScaleUnit; showMeasurementsToggle.checked = showMeasurements;
+                    } else { gridScaleValue = 1; gridScaleUnit = 'ft'; showMeasurements = false; gridScaleValueInput.value = "1"; gridScaleUnitSelect.value = "ft"; showMeasurementsToggle.checked = false; }
+                    if (data.canvasSettings) { 
+                        canvasWidthInput.value = data.canvasSettings.width || 800;
+                        canvasHeightInput.value = data.canvasSettings.height || 450;
+                    } else { canvasWidthInput.value = 800; canvasHeightInput.value = 450; }
+                    setCanvasDimensions(); 
+                    blueprintNameInput.value = currentBlueprintName; 
+                    currentBlueprintNameDisplay.textContent = `${currentBlueprintName} (ID: ${currentBlueprintId.substring(0,6)}...)`;
+                    selectedObject = null; updateSelectedObjectPanel();
+                    updateAllMeasurements(); 
+                    showMessage(`Blueprint "${currentBlueprintName}" loaded.`, "success");
+                } else { showMessage("Selected blueprint not found.", "error"); currentBlueprintId = null; currentBlueprintName = "New Blueprint"; currentBlueprintNameDisplay.textContent = currentBlueprintName; }
+            } catch (error) { console.error("Error loading blueprint:", error); showMessage(`Error loading blueprint: ${error.message}`, "error");
+            } finally { loadBlueprintButton.disabled = false; loadBlueprintButton.textContent = "Load Selected Blueprint"; }
+        });
+
+        function showMessage(message, type = "info") { 
+            messageArea.textContent = message;
+            messageArea.className = 'mt-2 p-3 text-sm rounded-md min-h-[40px]'; 
+            switch (type) {
+                case 'success': messageArea.classList.add('bg-green-100', 'text-green-700'); break;
+                case 'warning': messageArea.classList.add('bg-yellow-100', 'text-yellow-700'); break;
+                case 'error': messageArea.classList.add('bg-red-100', 'text-red-700'); break;
+                case 'info': default: messageArea.classList.add('bg-blue-100', 'text-blue-700'); break;
+            }
+        }
+
+        window.addEventListener('load', async () => {
+            await initializeFirebase();
+            setCanvasDimensions(); 
+            setActiveTool('line'); 
+            gridScaleValue = parseFloat(gridScaleValueInput.value) || 1;
+            gridScaleUnit = gridScaleUnitSelect.value;
+            showMeasurements = showMeasurementsToggle.checked;
+            undoButton.disabled = true; 
+        });
+    </script>
+</body>
+</html>
