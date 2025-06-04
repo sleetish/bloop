@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  blueprint-app:
+    build: . # Specifies to build from the Dockerfile in the current directory
+    image: blueprint-app-image # Optional: names the image if built by compose
+    ports:
+      - "3000:3000" # Maps host port 3000 to container port 3000
+    environment:
+      # FIREBASE_CONFIG: يتم توفيرها عند التشغيل أو من ملف .env
+      # APP_ID: يتم توفيرها عند التشغيل أو من ملف .env
+      # PORT: 3000 # Already set in Dockerfile, but can be overridden here if needed
+      FIREBASE_CONFIG: ${FIREBASE_CONFIG}
+      APP_ID: ${APP_ID}
+      PORT: ${PORT:-3000}
+    # To use an .env file:
+    # Create a file named .env in the same directory as docker-compose.yml
+    # Add your environment variables there, for example:
+    # FIREBASE_CONFIG='{"apiKey":"..."}'
+    # APP_ID='your-app-id'
+    # PORT=3000
+    # Docker Compose will automatically pick up the .env file.
+    # Alternatively, you can specify an env_file:
+    # env_file:
+    #   - ./my-app.env
+    restart: unless-stopped
+
+# Optional: Define a default network if needed for more complex setups
+# networks:
+#   default:
+#     driver: bridge
