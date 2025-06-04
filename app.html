@@ -117,8 +117,9 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, addDoc, getDoc, collection, getDocs, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-blueprint-interactive-app';
+        // These will be replaced by a server-side process with actual configuration values.
+        const firebaseConfigString = '__FIREBASE_CONFIG_PLACEHOLDER__';
+        const appId = '__APP_ID_PLACEHOLDER__';
 
         let app, auth, db, userId = null, isAuthReady = false;
 
@@ -175,12 +176,45 @@
         const SELECTION_TOLERANCE = 5; 
         const SELECTION_COLOR = 'rgba(0, 123, 255, 0.7)'; 
 
-        async function initializeFirebase() { 
-            if (!firebaseConfig) {
-                console.error("Firebase config is not available.");
-                showMessage("Error: Firebase configuration missing. App cannot connect to database.", "error");
+        async function initializeFirebase() {
+            let firebaseConfig;
+
+            if (firebaseConfigString === '__FIREBASE_CONFIG_PLACEHOLDER__' || appId === '__APP_ID_PLACEHOLDER__') {
+                console.error("Firebase config placeholders not replaced. Server-side replacement needed.");
+                showMessage("Error: Firebase configuration missing. App requires server-side setup.", "error");
+                // Disable UI elements that depend on Firebase
+                saveBlueprintButton.disabled = true;
+                loadBlueprintButton.disabled = true;
+                refreshBlueprintsButton.disabled = true;
+                undoButton.disabled = true;
+                userIdDisplay.textContent = "Offline Mode";
                 return;
             }
+
+            try {
+                firebaseConfig = JSON.parse(firebaseConfigString);
+            } catch (e) {
+                console.error("Error parsing Firebase config:", e);
+                showMessage("Error: Invalid Firebase configuration format. Check server setup.", "error");
+                saveBlueprintButton.disabled = true;
+                loadBlueprintButton.disabled = true;
+                refreshBlueprintsButton.disabled = true;
+                undoButton.disabled = true;
+                userIdDisplay.textContent = "Offline Mode - Config Error";
+                return;
+            }
+
+            if (!firebaseConfig) { // Handles cases like empty string or null after parsing, though JSON.parse would error on empty string.
+                console.error("Firebase config is null or undefined after parsing.");
+                showMessage("Error: Firebase configuration is invalid or empty. App cannot connect.", "error");
+                saveBlueprintButton.disabled = true;
+                loadBlueprintButton.disabled = true;
+                refreshBlueprintsButton.disabled = true;
+                undoButton.disabled = true;
+                userIdDisplay.textContent = "Offline Mode - Invalid Config";
+                return;
+            }
+
             try {
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
